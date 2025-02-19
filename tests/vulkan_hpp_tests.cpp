@@ -90,8 +90,11 @@ TEST_CASE("VulkanHpp Instance with surface", "[VkBootstrap.vulkan_hpp]") {
             vk::PhysicalDeviceDescriptorIndexingFeatures physical_device_descriptor_indexing_features_hpp;
             physical_device_descriptor_indexing_features_hpp.setRuntimeDescriptorArray(vk::True);
             physical_device_descriptor_indexing_features_hpp.setDescriptorBindingPartiallyBound(vk::True);
+            REQUIRE(phys_dev_ret->enable_extension_features_if_present(physical_device_descriptor_indexing_features_hpp));
 
-            phys_dev_ret->enable_extension_features_if_present(physical_device_descriptor_indexing_features_hpp);
+            vk::PhysicalDeviceBufferDeviceAddressFeatures physical_device_buffer_device_address_features{};
+            physical_device_buffer_device_address_features.bufferDeviceAddress = vk::True;
+            REQUIRE(!phys_dev_ret->are_extension_features_present(physical_device_buffer_device_address_features));
 
             auto device_ret = vkb::DeviceBuilder(phys_dev_ret.value()).build();
             REQUIRE(device_ret.has_value());
