@@ -20,8 +20,8 @@
 # This file is a part of VkBootstrap
 # https://github.com/charles-lunarg/vk-bootstrap
 
-# On run, vk.xml is pulled from the master of Khronos's Vulkan-Headers repo and a VkBoostrapDispatch header
-# is generated and placed in VkBoostrap's source directory
+# On run, vk.xml is pulled from the master of Khronos's Vulkan-Headers repo and a VkBootstrapDispatch header
+# is generated and placed in VkBootstrap's source directory
 # https://raw.githubusercontent.com/KhronosGroup/Vulkan-Headers/master/registry/vk.xml
 
 # This script makes use of xmltodict
@@ -34,7 +34,6 @@
 
 import sys
 import os
-import subprocess
 import copy
 import codecs
 import re
@@ -153,18 +152,40 @@ for aliased_type, alias in aliases.items():
         commands[alias] = copy.deepcopy(commands[aliased_type])
         commands[alias]['is_alias'] = True
 
+features_structs = {}
+
+# Get all of the Features chain struct bool counts
+for node in types_node:
+    if '@structextends' in node and 'VkPhysicalDeviceFeatures2' in node['@structextends']:
+        features_structs[node['@name']] = node
+        features_structs[node['@name']]['requirements'] = []
+
 # Add requirements for core PFN's
 features_node = vk_xml['registry']['feature']
 for feature_node in features_node:
     if feature_node['@name'] != 'VK_VERSION_1_0':
         for require_node in feature_node['require']:
             for param_node in require_node:
+                if not isinstance(require_node[param_node], list):
+                    require_node[param_node] = [require_node[param_node]]
                 if param_node == 'command':
-                    if not isinstance(require_node[param_node], list):
-                        require_node[param_node] = [require_node[param_node]]
                     for param in require_node[param_node]:
                         if param['@name'] in commands:
                             commands[param['@name']]['requirements'] += [[feature_node['@name']]]
+                if param_node == 'type':
+                    for param in require_node[param_node]:
+                        if param['@name'] in features_structs:
+                            features_structs[param['@name']]['requirements'] += [[feature_node['@name']]]
+
+extensions_node = vk_xml['registry']['extensions']['extension']
+# Fixup extensions_node to make require always be a list of dicts
+for extension_node in extensions_node:
+    extension_name = extension_node['@name']
+
+    if 'require' not in extension_node.keys():
+        continue
+    if not isinstance(extension_node['require'], list):
+        extension_node['require'] = [extension_node['require']]
 
 
 # Add requirements for extension PFN's
@@ -192,20 +213,20 @@ for extension_node in vk_xml['registry']['extensions']['extension']:
 
 # Generate macro templates
 for command_name, command in commands.items():
-    if len(commands[command_name]['requirements']) > 0:
-        macro_guard = get_macro_guard(commands[command_name]['requirements'], command_name)
+    if len(command['requirements']) > 0:
+        macro_guard = get_macro_guard(command['requirements'], command_name)
         macro = f'#if {macro_guard}\n$body#endif\n'
     else:
         macro = '$body'
-    commands[command_name]['macro_template'] = Template(macro)
+    command['macro_template'] = Template(macro)
 
 for command_name, command in commands.items():
-    if len(commands[command_name]['requirements']) > 0:
-        macro_guard = get_macro_guard(commands[command_name]['requirements'], command_name)
+    if len(command['requirements']) > 0:
+        macro_guard = get_macro_guard(command['requirements'], command_name)
         pfn_decl_macro = f'#if {macro_guard}\n$body#else\n    void * fp_{command_name}{{}};\n#endif\n'
     else:
         pfn_decl_macro = '$body'
-    commands[command_name]['pfn_decl_macro_template'] = Template(pfn_decl_macro)
+    command['pfn_decl_macro_template'] = Template(pfn_decl_macro)
 
 # License
 dispatch_license = '''/*
