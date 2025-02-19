@@ -39,8 +39,8 @@ import copy
 import codecs
 import re
 from string import Template
+import xmltodict
 import urllib.request
-import pkg_resources
 
 # Exclusions
 exclusions = [
@@ -58,30 +58,6 @@ excluded_alias_types = [
     'VkPipelineInfoKHR'
 ]
 
-# Check for/install xmltodict
-installed = {pkg.key for pkg in pkg_resources.working_set}
-xmltodict_missing = {'xmltodict'} - installed
-
-# Install xmltodict
-if xmltodict_missing:
-    if '--auto' not in sys.argv:
-        val = input('xmltodict is required to run this script. Would you like to install? (y/n): ')
-    else:
-        val = 'y'
-    if val.lower() == 'y':
-        try:
-            subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'xmltodict'])
-        except subprocess.CalledProcessError as error:
-            print('Failed to install xmltodict due to error:')
-            print(error)
-            if '--auto' not in sys.argv:
-                input('Press Enter to continue...')
-            sys.exit()
-    else:
-        sys.exit()
-
-# Fetch fresh vk.xml from Khronos repo
-import xmltodict
 
 try:
     response = urllib.request.urlopen('https://raw.githubusercontent.com/KhronosGroup/Vulkan-Headers/main/registry/vk.xml')
