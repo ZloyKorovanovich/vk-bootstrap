@@ -204,6 +204,45 @@ struct GenericFeatureChain {
     void combine(GenericFeatureChain const& right) noexcept;
 };
 
+bool compare_features_struct(const VkStructureType sType, const void* requested, const void* supported);
+void merge_features_struct(const VkStructureType sType, void* requested, void* supported);
+
+struct PDFeaturesChain {
+    struct StructInfo {
+        VkStructureType sType{};
+        size_t starting_location{};
+    };
+
+    std::vector<StructInfo> struct_info;
+    std::vector<char> struct_storage;
+
+    template <typename T> void add(T const& features) noexcept {
+        // If this struct is already in the list, combine it
+        for (auto& info : struct_info) {
+            if (static_cast<VkStructureType>(features.sType) == info.sType) {
+                merge_features_struct(info.sType, &struct_storage[info.starting_location], static_cast<void*>(&features));
+                return;
+            }
+        }
+
+        // Otherwise append to the end
+        StructInfo new_struct_info{};
+        new_struct_info.sType = static_cast<VkStructureType>(features.sType);
+        new_struct_info.starting_location = struct_storage.size();
+
+        struct_info.push_back(new_struct_info);
+        struct_storage.resize(struct_storage.size() + sizeof(features));
+        memcpy(&struct_storage[new_struct_info.starting_location], &features, sizeof(features));
+    }
+
+    bool match_all(GenericFeatureChain const& extension_requested) const noexcept;
+    bool find_and_match(GenericFeatureChain const& extension_requested) const noexcept;
+
+    void chain_up(VkPhysicalDeviceFeatures2& feats2) noexcept;
+
+    void combine(PDFeaturesChain const& right) noexcept;
+};
+
 } // namespace detail
 
 enum class InstanceError {

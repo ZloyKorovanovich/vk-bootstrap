@@ -256,6 +256,11 @@ info += '// https://github.com/charles-lunarg/vk-bootstrap\n\n'
 head = '\n#pragma once\n\n#include <vulkan/vulkan_core.h>\n\n'
 head += 'namespace vkb {\n\n'
 
+tail = '} // namespace vkb'
+
+detail_head = 'namespace detail {\n\n'
+detail_tail = '} // namespace detail\n'
+
 def create_dispatch_table(dispatch_type):
     out = ''
     if dispatch_type == INSTANCE:
@@ -382,7 +387,48 @@ def create_dispatch_table(dispatch_type):
     out += '};\n\n'
     return out
 
-tail = '} // namespace vkb'
+def generate_feature_struct_chain():
+    out = ''
+
+    for struct_details in features_structs.values():
+        if len(struct_details['requirements']) > 0:
+            out += f'#if {get_macro_guard(struct_details['requirements'], struct_details['@name'])}\n'
+        out += f'inline bool compare_features_struct({struct_details['@name']} const& requested, {struct_details['@name']} const& supported) {{\n'
+        for member in struct_details['member'][2:]:
+            out += f'    if (requested.{member['name']} && !supported.{member['name']}) return false;\n'
+        out += '    return true;\n'
+        out += '}\n'
+        out += f'inline void merge_features_struct({struct_details['@name']} & dest, {struct_details['@name']} const& to_add) {{\n'
+        for member in struct_details['member'][2:]:
+            out += f'    dest.{member['name']} = dest.{member['name']} || to_add.{member['name']};\n'
+        out += '}\n'
+        if len(struct_details['requirements']) > 0:
+            out += '#endif\n'
+
+    out += 'inline bool compare_features_struct(const VkStructureType sType, const void* requested, const void* supported) {\n'
+    out += '    switch (sType){\n'
+    for struct_details in features_structs.values():
+        if len(struct_details['requirements']) > 0:
+            out += f'#if {get_macro_guard(struct_details['requirements'], struct_details['@name'])}\n'
+        out += f'        case({struct_details['member'][0]['@values']}): return compare_features_struct(*static_cast<const {struct_details['@name']}*>(requested), *static_cast<const {struct_details['@name']}*>(supported));\n'
+        if len(struct_details['requirements']) > 0:
+            out += '#endif\n'
+    out += '    default: return false;\n'
+    out += '    }\n'
+    out += '}\n'
+    out += 'inline void merge_features_struct(const VkStructureType sType, void* requested, void* supported) {\n'
+    out += '    switch (sType){\n'
+    for struct_details in features_structs.values():
+        if len(struct_details['requirements']) > 0:
+            out += f'#if {get_macro_guard(struct_details['requirements'], struct_details['@name'])}\n'
+        out += f'        case({struct_details['member'][0]['@values']}): merge_features_struct(*static_cast<{struct_details['@name']}*>(requested), *static_cast<{struct_details['@name']}*>(supported));\n'
+        if len(struct_details['requirements']) > 0:
+            out += '#endif\n'
+    out += '    default: return; // unknown struct, do nothing\n'
+    out += '    }\n'
+    out += '}\n'
+    return out
+
 
 # find the version used to generate the code
 for type_node in  types_node:
@@ -405,6 +451,11 @@ if not os.path.exists(path_to_src):
 header_file = codecs.open(os.path.join(path_to_src,'VkBootstrapDispatch.h'), 'w', 'utf-8')
 header_file.write(dispatch_license + info + head + create_dispatch_table('instance') + create_dispatch_table('device') + tail)
 header_file.close()
+
+if False: # Dont generate for the moment
+    feature_struct_file = codecs.open(os.path.join(path_to_src,'VkBootstrapFeatureChain.h'), 'w', 'utf-8')
+    feature_struct_file.write(dispatch_license + info + head + detail_head + generate_feature_struct_chain() + detail_tail + tail)
+    feature_struct_file.close()
 
 path_to_gen = os.path.join('gen')
 if not os.path.exists(path_to_gen):
